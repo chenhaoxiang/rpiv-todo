@@ -1,33 +1,106 @@
-# rpiv-todo
+# rpiv-todo — maintained fork
 
-Pi extension that registers the `todo` tool, `/todos` slash command, and a
-persistent TodoOverlay widget above the editor. Replaces Claude Code's
-TaskCreate/TaskUpdate tool family.
+A Pi extension that provides a Claude-Code-style `todo` tool, the `/todos` command, and a persistent todo overlay above the editor.
 
-![Todo overlay widget above the Pi editor](https://raw.githubusercontent.com/juicesharp/rpiv-todo/main/docs/overlay.jpg)
+This repository is the maintained fork:
 
-## Installation
+<https://github.com/chenhaoxiang/rpiv-todo>
 
-    pi install npm:@juicesharp/rpiv-todo
+## Install this fork
 
-Then restart your Pi session.
+```bash
+pi install git:github.com/chenhaoxiang/rpiv-todo@main
+```
 
-## Tool
+The upstream npm package and this fork are separate sources. Pin a reviewed commit when reproducibility matters:
 
-- **`todo`** — create / update / list / get / delete / clear tasks. 4-state
-  machine (pending → in_progress → completed, plus deleted tombstone).
-  Supports `blockedBy` dependency tracking with cycle detection. Tasks persist
-  via branch replay — survive session compact and `/reload`.
+```bash
+pi install git:github.com/chenhaoxiang/rpiv-todo@<reviewed-commit>
+```
 
-## Commands
+Restart Pi or run `/reload` after installation.
 
-- **`/todos`** — print the current todo list grouped by status.
+## Tool and command
 
-## Overlay
+The extension registers:
 
-The aboveEditor widget auto-renders whenever any non-deleted tasks exist.
-12-line collapse threshold; completed tasks drop first on overflow, pending
-tasks truncate last. Auto-hides when the list is empty.
+- **`todo`** — create, update, list, inspect, delete, or clear tasks;
+- **`/todos`** — print the current non-deleted task list grouped by status;
+- **`rpiv-todos` widget** — a persistent above-editor view that refreshes as tasks change.
+
+Example tool calls:
+
+```ts
+todo({ action: "create", subject: "Review the API diff", activeForm: "reviewing the API diff" })
+todo({ action: "update", id: 1, status: "in_progress" })
+todo({ action: "list" })
+todo({ action: "get", id: 1 })
+todo({ action: "update", id: 1, status: "completed" })
+```
+
+Tasks have four states:
+
+```text
+pending → in_progress → completed
+    └───────────────┘
+any live state → deleted
+```
+
+Completed tasks cannot be reopened. Invalid transitions return a structured error instead of mutating state.
+
+## Dependencies and task ownership
+
+Tasks can depend on other tasks through `blockedBy`:
+
+```ts
+todo({
+  action: "create",
+  subject: "Run integration tests",
+  blockedBy: [1]
+})
+```
+
+The reducer rejects:
+
+- missing or deleted dependency IDs;
+- self-dependencies;
+- cycles in the dependency graph;
+- updates without a mutable field;
+- invalid status transitions.
+
+Optional fields include `description`, `activeForm`, `owner`, and arbitrary `metadata`. Metadata updates merge by key; a `null` value removes a key.
+
+## Persistence and overlay behavior
+
+Todo state is persisted through the tool result details recorded in Pi's session branch. On `session_start`, compaction, and tree changes, the extension reconstructs the latest snapshot from the current branch. Existing session history therefore survives `/reload`, compaction, and branch navigation.
+
+The overlay:
+
+- appears above the editor when at least one non-deleted task exists;
+- displays status glyphs, active forms, IDs, and dependency links when useful;
+- collapses to 12 lines when the list is long;
+- drops completed rows before active work when space is limited;
+- unregisters itself when no visible tasks remain;
+- rebinds safely after `/reload` or a UI-context change.
+
+The widget reads live module state while rendering. It does not reconstruct branch state from a stale `tool_execution_end` snapshot.
+
+## Compatibility and limits
+
+- Uses Pi's host-provided `@earendil-works/pi-ai`, `@earendil-works/pi-coding-agent`, `@earendil-works/pi-tui`, and `typebox` packages.
+- The public tool identity is deliberately `todo`; do not rename it if existing permission rules and session history must remain compatible.
+- State is local to Pi session history. This extension is not a cross-session task database and does not synchronize tasks between machines.
+- `/todos` requires interactive mode; the tool itself remains usable where Pi can return structured tool results.
+
+## Development
+
+The package is loaded as TypeScript through Pi's package loader:
+
+```bash
+npm install --ignore-scripts
+```
+
+Use disposable sessions and temporary Pi directories for checks. Verify create/update/blockedBy/cycle/state-replay behavior and the overlay's empty, normal, and overflow states. Do not use private production session history as test data.
 
 ## License
 
