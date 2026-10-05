@@ -1,5 +1,7 @@
 # rpiv-todo — maintained fork
 
+English | [中文](README.zh-CN.md)
+
 A Pi extension that provides a Claude-Code-style `todo` tool, the `/todos` command, and a persistent todo overlay above the editor.
 
 This repository is the maintained fork:
