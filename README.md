@@ -8,6 +8,24 @@ This repository is the maintained fork:
 
 <https://github.com/chenhaoxiang/rpiv-todo>
 
+## Releases and branch policy
+
+The maintained release is **0.1.2-fork.1**, based on community **0.1.2**. Fork releases use `<community-version>-fork.<revision>`; the fork revision increases without pretending to be a new upstream release.
+
+- `main`: our maintained integration and release branch, including fork fixes.
+- `upstream-main`: an exact mirror of the community's `main`, with no fork commits. Never install from this branch.
+- Changes enter `main` through reviewed pull requests; existing branches and history are retained.
+
+Install a reproducible release:
+
+```bash
+pi install git:github.com/chenhaoxiang/rpiv-todo@v0.1.2-fork.1
+```
+
+[GitHub Releases](https://github.com/chenhaoxiang/rpiv-todo/releases) include the installable package tarball, a provenance manifest, and `SHA256SUMS`. These GitHub releases are not npm publications under the upstream author's namespace. See [release maintenance](docs/releasing.md) for asset installation and future releases.
+
+The earlier unqualified fork version `0.1.4` is standardized as `0.1.2-fork.1` using its real community base, not by reverting host-import or overlay behavior.
+
 ## Install this fork
 
 ```bash
@@ -96,7 +114,7 @@ The widget reads live module state while rendering. It does not reconstruct bran
 
 ## Development
 
-The package is loaded as TypeScript through Pi's package loader:
+There is currently no automated functional test script. Release checks inspect package resources and isolated current-Pi RPC startup, not live overlay acceptance. The package is loaded as TypeScript through Pi's package loader:
 
 ```bash
 npm install --ignore-scripts
