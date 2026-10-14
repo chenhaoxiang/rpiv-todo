@@ -660,6 +660,7 @@ export function registerTodoTool(pi: ExtensionAPI): void {
 			return {
 				content: result.content,
 				details: result.details,
+				...(result.details.error ? { isError: true } : {}),
 			};
 		},
 
@@ -684,7 +685,7 @@ export function registerTodoTool(pi: ExtensionAPI): void {
 		},
 
 		renderResult(result, _opts, theme, _context) {
-			if (result.isError) {
+			if (result.isError || (result.details as TaskDetails | undefined)?.error) {
 				return new Text(theme.fg("error", "✗"), 0, 0);
 			}
 			const details = result.details as TaskDetails | undefined;
@@ -700,9 +701,7 @@ export function registerTodoTool(pi: ExtensionAPI): void {
 						status = details.tasks[details.tasks.length - 1]?.status;
 						break;
 					case "update":
-						status =
-							params.status ??
-							details.tasks.find((t) => t.id === params.id)?.status;
+						status = details.tasks.find((t) => t.id === params.id)?.status;
 						break;
 					case "delete":
 						status = details.tasks.find((t) => t.id === params.id)?.status;
