@@ -20,7 +20,9 @@ Applies only to chenhaoxiang/rpiv-todo. The community project remains [juiceshar
 - Package version: `<community-base-version>-fork.<N>`; release tag: `v<package-version>`. N starts at 1 and increments for each fork release on the same community base. Never reuse tags or replace published assets.
 - `-fork.N` identifies a maintained fork; GitHub Releases are marked stable/latest, not experimental prereleases. This does not change SemVer ordering in npm.
 
-## Baseline for this release
+## Retained community baseline
+
+The current maintained version is **0.1.2-fork.2**; its bounded feature changes and validation contract are in [the feature guide](task-readiness.md). The previous release facts below describe the retained community base, not the new feature's installed acceptance.
 
 Version **0.1.2-fork.1** uses the real standalone community base 0.1.2. Earlier local fork metadata said 0.1.4 without a qualifier; this normalization does not revert the host-provided Pi/typebox imports, public todo identity, branch replay, dependency reducer or overlay. Current community main is an ancestor; source behavior remains unchanged.
 
@@ -28,7 +30,7 @@ Version **0.1.2-fork.1** uses the real standalone community base 0.1.2. Earlier 
 
 1. Fetch origin/main and create an isolated worktree from the latest remote integration branch. Keep all pre-existing dirty work untouched.
 2. Merge only reviewed community changes when needed; resolve conflicts without discarding fork fixes. Update package version, lockfile metadata (when present), and both README files.
-3. No automated functional test script currently exists. Inspect runtime/package files, then smoke-load the actual tarball through isolated Pi RPC with synthetic state and no model prompts. Manual overlay/UI acceptance is distinct; do not claim a nonexistent npm test suite passed. Review the exact diff and required CI.
+3. Run `npm test` (Node24+, actual pinned TUI/synthetic task, branch and UI hosts); preserve characterization assertions. Inspect runtime/package files and smoke-load the tarball through isolated Pi RPC without prompts. Manual terminal acceptance is distinct from synthetic rendering. Review the exact diff and CI.
 4. Merge the PR normally, then verify the remote main contains the validated head.
 5. At that exact main commit, run `npm pack --ignore-scripts --pack-destination tmp/release`. Inspect/extract the tarball and smoke-load it in an isolated Pi agent directory without model requests.
 6. Write `release-manifest.json` with repository, version, exact source commit, community base, mirror tip, package filename and SHA-256. Generate `SHA256SUMS` for both the tarball and manifest.

@@ -16,7 +16,7 @@ import type {
 	Theme,
 } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth, type TUI } from "@earendil-works/pi-tui";
-import { getTodos, type Task, type TaskStatus } from "./todo.js";
+import { getTodos, readyTasks, unresolvedDependencies, type Task, type TaskStatus } from "./todo.js";
 
 // ---- Constants ----
 
@@ -128,7 +128,7 @@ export class TodoOverlay {
 
 		const headingColor = hasActive ? "accent" : "dim";
 		const headingIcon = hasActive ? "●" : "○";
-		const headingText = `Todos (${completedCount}/${totalVisible})`;
+		const headingText = `Todos (${completedCount}/${totalVisible}) · ${readyTasks(all).length} ready`;
 		const heading = truncate(
 			theme.fg(headingColor, headingIcon) +
 				" " +
@@ -172,8 +172,13 @@ export class TodoOverlay {
 		} else {
 			// Even dropping all completed isn't enough — truncate the
 			// non-completed tail.
-			visible = nonCompleted.slice(0, budget);
-			truncatedTailCount = nonCompleted.length - budget;
+			const kept = new Set(nonCompleted.filter(t => t.status === "in_progress").slice(0, budget));
+			for (const t of nonCompleted) {
+				if (kept.size >= budget) break;
+				kept.add(t);
+			}
+			visible = nonCompleted.filter(t => kept.has(t));
+			truncatedTailCount = nonCompleted.length - visible.length;
 		}
 
 		for (const t of visible) {
@@ -223,13 +228,10 @@ export class TodoOverlay {
 		if (t.status === "in_progress" && t.activeForm) {
 			line += " " + theme.fg("dim", `(${t.activeForm})`);
 		}
-		if (t.blockedBy && t.blockedBy.length > 0) {
-			line +=
-				" " +
-				theme.fg(
-					"dim",
-					`⛓ ${t.blockedBy.map((id) => `#${id}`).join(",")}`,
-				);
+		if (t.status === "pending" || t.status === "in_progress") {
+			const unresolved = unresolvedDependencies(t, getTodos());
+			if (unresolved.length) line += " " + theme.fg("dim", `⛓ waiting #${unresolved.join(",#")}`);
+			else if (t.status === "pending") line += " " + theme.fg("dim", "[ready]");
 		}
 		return line;
 	}
