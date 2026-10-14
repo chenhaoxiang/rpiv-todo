@@ -17,8 +17,8 @@ export async function loadSource(entry) {
   };
   async function get(url) {
     const key = url.href; if (cache.has(key)) return cache.get(key);
+    const pending = (async () => {
     const m = new SourceTextModule(stripTypeScriptTypes(await readFile(url, 'utf8')), { context, identifier: key });
-    cache.set(key, m);
     await m.link(async (specifier, ref) => {
       if (specifier.startsWith('.')) return get(new URL(specifier.replace(/\.js$/, '.ts'), ref.identifier));
       const values = host[specifier]; if (!values) throw new Error(`Unexpected fixture import ${specifier}`);
@@ -27,6 +27,10 @@ export async function loadSource(entry) {
       }, { context });
     });
     return m;
+    })();
+    // Publish the in-flight module before async IO: diamond imports must share one state instance.
+    cache.set(key, pending);
+    return pending;
   }
   const m = await get(entry); await m.evaluate(); return m.namespace;
 }

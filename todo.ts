@@ -644,6 +644,7 @@ export function registerTodoTool(pi: ExtensionAPI): void {
 			"Task status is a 4-state machine: pending → in_progress → completed, plus deleted as a tombstone. Pass activeForm (present-continuous label, e.g. 'researching existing tool') when marking in_progress.",
 			"Use blockedBy to express dependencies (A is blocked by B). On create, pass blockedBy as the initial set. On update, use addBlockedBy / removeBlockedBy (additive merge — do not resend the full array). Cycles are rejected.",
 			"list hides tombstoned (deleted) tasks by default; pass includeDeleted:true to see them. Pass status to filter by a single status.",
+			"Deleting even a completed prerequisite makes dependent readiness unresolved again. Keep completed prerequisites, or explicitly removeBlockedBy on dependents if the dependency should be released.",
 			"Subject must be short and imperative (e.g. 'Research existing tool'); description is for long-form detail. activeForm is a present-continuous label shown while in_progress.",
 		],
 		parameters: TodoParams,
