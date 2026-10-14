@@ -6,7 +6,7 @@ Pi 的 Claude-Code 风格 `todo` 工具、`/todos` 命令和编辑器上方的�
 
 ## 发布版本与分支约定
 
-当前维护版本为 **0.1.2-fork.2**，基于社区 **0.1.2**。fork 版本统一使用 `<社区版本>-fork.<修订号>`，本地修订不冒充社区新版本。
+当前维护版本为 **0.1.2-fork.3**，基于社区 **0.1.2**。fork 版本统一使用 `<社区版本>-fork.<修订号>`，本地修订不冒充社区新版本。
 
 - `main`：我们的维护、整合与发布主线，保留 fork 修复。
 - `upstream-main`：仅镜像社区 `main`，不加入 fork 提交，也不作为安装来源。
@@ -15,7 +15,7 @@ Pi 的 Claude-Code 风格 `todo` 工具、`/todos` 命令和编辑器上方的�
 固定版本安装：
 
 ```bash
-pi install git:github.com/chenhaoxiang/rpiv-todo@v0.1.2-fork.2
+pi install git:github.com/chenhaoxiang/rpiv-todo@v0.1.2-fork.3
 ```
 
 [GitHub Releases](https://github.com/chenhaoxiang/rpiv-todo/releases) 提供可安装的包、来源清单和 `SHA256SUMS` 校验文件；这不是向上游作者的 npm 命名空间发布。发布及制品安装流程见[维护说明](docs/releasing.md)。
@@ -67,6 +67,10 @@ todo({ action: "update", id: 1, status: "completed" })
 - 状态只在 Pi 会话历史中保存，不跨机器或跨会话同步；
 - `/todos` 需要交互模式；工具可在 Pi 能返回结构化结果的模式下使用；
 - 任务工具只记录状态，不执行代码；标记 completed 不证明测试、Git 合并、部署或上线已经完成。保护包含任务文本/路径的本地会话数据。
+
+## 被拒绝的操作
+
+非法更新会返回 `isError: true` 并保留原状态。渲染器也识别旧历史中的 `details.error`，不再把被拒绝的目标状态显示成成功；正常更新按真实返回快照显示。见[错误结果说明](docs/error-results.md)。
 
 ## 开发与验证
 

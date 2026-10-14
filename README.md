@@ -10,7 +10,7 @@ This repository is the maintained fork:
 
 ## Releases and branch policy
 
-The maintained release is **0.1.2-fork.2**, based on community **0.1.2**. Fork releases use `<community-version>-fork.<revision>`; the fork revision increases without pretending to be a new upstream release.
+The maintained release is **0.1.2-fork.3**, based on community **0.1.2**. Fork releases use `<community-version>-fork.<revision>`; the fork revision increases without pretending to be a new upstream release.
 
 - `main`: our maintained integration and release branch, including fork fixes.
 - `upstream-main`: an exact mirror of the community's `main`, with no fork commits. Never install from this branch.
@@ -19,7 +19,7 @@ The maintained release is **0.1.2-fork.2**, based on community **0.1.2**. Fork r
 Install a reproducible release:
 
 ```bash
-pi install git:github.com/chenhaoxiang/rpiv-todo@v0.1.2-fork.2
+pi install git:github.com/chenhaoxiang/rpiv-todo@v0.1.2-fork.3
 ```
 
 [GitHub Releases](https://github.com/chenhaoxiang/rpiv-todo/releases) include the installable package tarball, a provenance manifest, and `SHA256SUMS`. These GitHub releases are not npm publications under the upstream author's namespace. See [release maintenance](docs/releasing.md) for asset installation and future releases.
@@ -111,6 +111,10 @@ The widget reads live module state while rendering. It does not reconstruct bran
 - The public tool identity is deliberately `todo`; do not rename it if existing permission rules and session history must remain compatible.
 - State is local to Pi session history. This extension is not a cross-session task database and does not synchronize tasks between machines.
 - `/todos` requires interactive mode; the tool itself remains usable where Pi can return structured tool results.
+
+## Rejected operations
+
+Rejected mutations carry `isError: true` and retain the original state. Renderers recognize old `details.error` snapshots and never show a rejected target status as success. See [error result contract](docs/error-results.md).
 
 ## Development
 

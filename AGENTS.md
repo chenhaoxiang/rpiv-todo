@@ -9,6 +9,8 @@ Maintained standalone fork of juicesharp/rpiv-todo. Use isolated worktrees; pres
 
 ## Documentation map
 
+- `docs/error-results.md`: explicit rejected-operation isError, historical error-snapshot rendering and actual returned task status regression.
+
 - `docs/maintenance/2026-10-14-optimization-installed.md`: 0.1.2-fork.2 exact-source normal merge, CI, fresh-download checksums, installed bytes, combined loader and rollback/activation boundaries.
 
 - `docs/task-readiness.md`: read-only readiness hints, dependency satisfaction, prioritized current-task overflow and reducer/lifecycle/view regression scope.
