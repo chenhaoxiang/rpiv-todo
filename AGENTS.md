@@ -9,6 +9,8 @@ Maintained standalone fork of juicesharp/rpiv-todo. Use isolated worktrees; pres
 
 ## Documentation map
 
+- `docs/maintenance/2026-10-14-audited-bugfix-installed.md`: 0.1.2-fork.3 red/green defect closure, exact-review-before-merge, main CI, schema1 original Release, installed bytes/native synthetic recheck and activation limits.
+
 - `docs/error-results.md`: explicit rejected-operation isError, historical error-snapshot rendering and actual returned task status regression.
 
 - `docs/maintenance/2026-10-14-optimization-installed.md`: 0.1.2-fork.2 exact-source normal merge, CI, fresh-download checksums, installed bytes, combined loader and rollback/activation boundaries.
