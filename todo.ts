@@ -131,6 +131,15 @@ export function deriveBlocks(taskList: readonly Task[]): Map<number, number[]> {
 	return blocks;
 }
 
+/** Missing/deleted dependencies remain unresolved; only completed satisfies a dependency. */
+export function unresolvedDependencies(task: Task, taskList: readonly Task[]): number[] {
+	return (task.blockedBy ?? []).filter(id => taskList.find(t => t.id === id)?.status !== "completed");
+}
+
+export function readyTasks(taskList: readonly Task[]): Task[] {
+	return taskList.filter(t => t.status === "pending" && unresolvedDependencies(t, taskList).length === 0);
+}
+
 // ---------------------------------------------------------------------------
 // Reducer — pure, single source of truth for invariants
 // ---------------------------------------------------------------------------
@@ -389,8 +398,9 @@ export function applyTaskMutation(
 					? "No tasks"
 					: view
 							.map((t) => {
-								const block = t.blockedBy?.length
-									? ` ⛓ ${t.blockedBy.map((id) => `#${id}`).join(",")}`
+								const unresolved = unresolvedDependencies(t, state.tasks);
+								const block = t.status === "pending" || t.status === "in_progress"
+									? unresolved.length ? ` ⛓ waiting on ${unresolved.map(id => `#${id}`).join(",")}` : t.status === "pending" ? " [ready to start]" : ""
 									: "";
 								const form =
 									t.status === "in_progress" && t.activeForm
@@ -634,6 +644,7 @@ export function registerTodoTool(pi: ExtensionAPI): void {
 			"Task status is a 4-state machine: pending → in_progress → completed, plus deleted as a tombstone. Pass activeForm (present-continuous label, e.g. 'researching existing tool') when marking in_progress.",
 			"Use blockedBy to express dependencies (A is blocked by B). On create, pass blockedBy as the initial set. On update, use addBlockedBy / removeBlockedBy (additive merge — do not resend the full array). Cycles are rejected.",
 			"list hides tombstoned (deleted) tasks by default; pass includeDeleted:true to see them. Pass status to filter by a single status.",
+			"Deleting even a completed prerequisite makes dependent readiness unresolved again. Keep completed prerequisites, or explicitly removeBlockedBy on dependents if the dependency should be released.",
 			"Subject must be short and imperative (e.g. 'Research existing tool'); description is for long-form detail. activeForm is a present-continuous label shown while in_progress.",
 		],
 		parameters: TodoParams,
@@ -721,9 +732,19 @@ export function registerTodoTool(pi: ExtensionAPI): void {
 export function registerTodosCommand(pi: ExtensionAPI): void {
 	pi.registerCommand(COMMAND_NAME, {
 		description: "Show all todos on the current branch, grouped by status",
-		handler: async (_args, ctx) => {
+		handler: async (args, ctx) => {
 			if (!ctx.hasUI) {
 				ctx.ui.notify(ERR_REQUIRES_INTERACTIVE, "error");
+				return;
+			}
+			const action = args.trim();
+			if (action && action !== "ready") {
+				ctx.ui.notify("Usage: /todos [ready]", "warning");
+				return;
+			}
+			if (action === "ready") {
+				const ready = readyTasks(tasks);
+				ctx.ui.notify(ready.length ? `Ready to start (not auto-scheduled):\n${ready.map(t => `#${t.id} ${t.subject}`).join("\n")}` : "No pending tasks are ready to start.", "info");
 				return;
 			}
 			const visible = tasks.filter((t) => t.status !== "deleted");
@@ -747,6 +768,7 @@ export function registerTodosCommand(pi: ExtensionAPI): void {
 				header.push(`${pending.length} pending`);
 			}
 
+			header.push(`${readyTasks(tasks).length} ready to start`);
 			const lines: string[] = [header.join(" · ")];
 
 			const renderTask = (t: Task, glyph: string): string => {
@@ -754,8 +776,9 @@ export function registerTodosCommand(pi: ExtensionAPI): void {
 					t.status === "in_progress" && t.activeForm
 						? ` (${t.activeForm})`
 						: "";
-				const block = t.blockedBy?.length
-					? `    ⛓ ${t.blockedBy.map((id) => `#${id}`).join(",")}`
+				const unresolved = unresolvedDependencies(t, tasks);
+				const block = t.status === "pending" || t.status === "in_progress"
+					? unresolved.length ? `    ⛓ waiting on ${unresolved.map(id => `#${id}`).join(",")}` : t.status === "pending" ? " [ready to start]" : ""
 					: "";
 				return `  ${glyph} #${t.id} ${t.subject}${form}${block}`;
 			};

@@ -6,7 +6,7 @@ Pi 的 Claude-Code 风格 `todo` 工具、`/todos` 命令和编辑器上方的�
 
 ## 发布版本与分支约定
 
-当前维护版本为 **0.1.2-fork.1**，基于社区 **0.1.2**。fork 版本统一使用 `<社区版本>-fork.<修订号>`，本地修订不冒充社区新版本。
+当前维护版本为 **0.1.2-fork.2**，基于社区 **0.1.2**。fork 版本统一使用 `<社区版本>-fork.<修订号>`，本地修订不冒充社区新版本。
 
 - `main`：我们的维护、整合与发布主线，保留 fork 修复。
 - `upstream-main`：仅镜像社区 `main`，不加入 fork 提交，也不作为安装来源。
@@ -15,7 +15,7 @@ Pi 的 Claude-Code 风格 `todo` 工具、`/todos` 命令和编辑器上方的�
 固定版本安装：
 
 ```bash
-pi install git:github.com/chenhaoxiang/rpiv-todo@v0.1.2-fork.1
+pi install git:github.com/chenhaoxiang/rpiv-todo@v0.1.2-fork.2
 ```
 
 [GitHub Releases](https://github.com/chenhaoxiang/rpiv-todo/releases) 提供可安装的包、来源清单和 `SHA256SUMS` 校验文件；这不是向上游作者的 npm 命名空间发布。发布及制品安装流程见[维护说明](docs/releasing.md)。
@@ -74,7 +74,7 @@ todo({ action: "update", id: 1, status: "completed" })
 npm install --ignore-scripts
 ```
 
-当前没有自动化功能测试脚本；不要宣称 `npm test` 通过。发布检查覆盖包内容及不调用真实模型的隔离 RPC 加载，交互 overlay 仍需手工验证。检查行为修改时应使用合成任务和一次性 Pi 目录，覆盖 create/update、依赖循环、状态回放及空/普通/超长视图，不读取真实私人会话。
+在 Node24 或更高版本运行 `npm test`，用合成任务、分支和真实 TUI 组件验证归约器、生命周期回放和视图。`/todos ready`、列表及浮层会提示可开始任务和未完成依赖；已删除或缺失依赖仍视为阻塞。长列表优先保留执行中的任务。这些提示不自动调度或改变状态。见[任务可开始状态说明](docs/task-readiness.md)。实际终端验收、打包和隔离加载另行核验。
 
 ## 许可证
 
