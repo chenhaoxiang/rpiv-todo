@@ -6,7 +6,7 @@ Pi 的 Claude-Code 风格 `todo` 工具、`/todos` 命令和编辑器上方的�
 
 ## 发布版本与分支约定
 
-当前维护版本为 **0.1.2-fork.3**，基于社区 **0.1.2**。fork 版本统一使用 `<社区版本>-fork.<修订号>`，本地修订不冒充社区新版本。
+当前源码候选为 **0.1.2-fork.4**，基于社区 **0.1.2**，补齐组合调用的原生分支快照。已发布的 **0.1.2-fork.3** 保留，回退限制见下文。fork 版本统一使用 `<社区版本>-fork.<修订号>`，本地修订不冒充社区新版本。
 
 - `main`：我们的维护、整合与发布主线，保留 fork 修复。
 - `upstream-main`：仅镜像社区 `main`，不加入 fork 提交，也不作为安装来源。
@@ -15,7 +15,7 @@ Pi 的 Claude-Code 风格 `todo` 工具、`/todos` 命令和编辑器上方的�
 固定版本安装：
 
 ```bash
-pi install git:github.com/chenhaoxiang/rpiv-todo@v0.1.2-fork.3
+pi install git:github.com/chenhaoxiang/rpiv-todo@v0.1.2-fork.4
 ```
 
 [GitHub Releases](https://github.com/chenhaoxiang/rpiv-todo/releases) 提供可安装的包、来源清单和 `SHA256SUMS` 校验文件；这不是向上游作者的 npm 命名空间发布。发布及制品安装流程见[维护说明](docs/releasing.md)。
@@ -56,7 +56,13 @@ todo({ action: "update", id: 1, status: "completed" })
 
 ## 持久化与视图
 
-状态保存于 Pi 当前会话分支的工具结果 details。会话启动、压缩和树变化时，从当前分支最后一个有效快照重建；能够跨 reload、压缩和分支导航保留，不是跨会话共享数据库。
+成功的 create/update/delete/clear 通过 Pi 原生 `appendEntry()` 写入一个独立的 `rpiv-todo-state` 快照，数据为 `{version:1, tasks, nextId}`。它不进入模型上下文，不重写旧记录，也不新建任务数据库。list/get 和被归约器拒绝的操作不追加快照；启动、压缩和切换分支时，仅从当前分支恢复，并继续读取旧版直接 todo 工具结果。
+
+新结果 details 保留原字段，增加 `stateSource: "native-entry-v1"`，表示这是快照的投影，不是第二份回放源或落盘收据，晚到的直接工具结果不能覆盖较新的原生快照。codemode 内层结果本来就不是独立 transcript toolResult；本扩展不解析外层脚本文本，也不重新执行历史参数来猜状态。
+
+缺少持久化入口或状态无法 JSON 序列化时，操作在修改前被拒绝。若原生追加在内存已修改后抛错，返回 `isError: true` 并明确持久化未确认，保留实际内存状态和已分配ID，不自动回滚或重试；已部分追加的记录保留，纯内存状态不保证重启后存在，先查看原owner状态再处理。详见[错误语义](docs/error-results.md)。
+
+旧 fork.3 不能恢复只存在于新 custom entry 的变更。保留旧版用于回退，但不能用旧版继续这种分支并假定任务完整；本修复不恢复此前已经丢失的 codemode 任务，也不迁移真实历史。
 
 视图在存在未删除任务时显示，展示状态、活动标签、ID 和依赖；长列表折叠到 12 行，空间不足时先隐藏完成项而不是活跃工作；没有可见任务时注销 widget。reload 或 UI 上下文改变后重新绑定，渲染读取实时模块状态，不使用过时 tool_execution_end 快照。
 

@@ -22,7 +22,7 @@ Applies only to chenhaoxiang/rpiv-todo. The community project remains [juiceshar
 
 ## Retained community baseline
 
-The current maintained version is **0.1.2-fork.3**; its retained task-readiness behavior is in [the feature guide](task-readiness.md), and the current rejection/rendering fix is in [error results](error-results.md). The previous release facts below describe the retained community base, not the new feature's installed acceptance.
+The current source candidate is **0.1.2-fork.4**, adding owner-native branch snapshots for composed calls while preserving the task-readiness behavior in [the feature guide](task-readiness.md) and reducer/error rendering in [error results](error-results.md). Published fork.3 remains retained; it cannot reconstruct changes recorded only by the new custom entries, so rollback is not a task-history migration. The previous release facts below describe the retained community base, not the new feature's installed acceptance.
 
 Version **0.1.2-fork.1** uses the real standalone community base 0.1.2. Earlier local fork metadata said 0.1.4 without a qualifier; this normalization does not revert the host-provided Pi/typebox imports, public todo identity, branch replay, dependency reducer or overlay. Current community main is an ancestor; source behavior remains unchanged.
 

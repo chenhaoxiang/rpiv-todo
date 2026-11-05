@@ -1,9 +1,10 @@
 /**
  * todo tool + /todos command — Claude-Code-parity Task management.
  *
- * State lives in this module and persists via the tool's AgentToolResult.details
- * envelope. reconstructTodoState walks ctx.sessionManager.getBranch() and restores
- * the last snapshot; the pure applyTaskMutation reducer is the single source of
+ * State lives in this module. Mutations append owner snapshots through Pi's
+ * native custom-entry API so composed calls also survive branch reconstruction.
+ * Direct AgentToolResult.details snapshots remain readable for older histories.
+ * reconstructTodoState walks only the current branch; applyTaskMutation owns
  * truth for invariants — state machine transitions, blockedBy cycle checks,
  * dangling-reference rejection. Tool name is deliberately "todo" (not
  * TaskCreate/etc.) to preserve the permissions entry at
@@ -20,6 +21,7 @@ import { Type } from "typebox";
 // ---------------------------------------------------------------------------
 
 export const TOOL_NAME = "todo";
+export const TODO_STATE_ENTRY = "rpiv-todo-state";
 const TOOL_LABEL = "Todo";
 const COMMAND_NAME = "todos";
 
@@ -50,6 +52,8 @@ export interface TaskDetails {
 	params: Record<string, unknown>;
 	tasks: Task[];
 	nextId: number;
+	/** This result is a projection, not a replay source or a durable-write receipt. */
+	stateSource?: "native-entry-v1";
 	error?: string;
 }
 
@@ -518,11 +522,20 @@ export function reconstructTodoState(ctx: any): void {
 	tasks = [];
 	nextId = 1;
 	for (const entry of ctx.sessionManager.getBranch()) {
+		if (entry.type === "custom" && entry.customType === TODO_STATE_ENTRY && entry.data?.version === 1 && isTaskDetails(entry.data)) {
+			tasks = JSON.parse(JSON.stringify(entry.data.tasks));
+			nextId = entry.data.nextId;
+			continue;
+		}
 		if (entry.type !== "message") continue;
 		const msg = entry.message;
 		if (msg.role !== "toolResult" || msg.toolName !== "todo") continue;
 		const details: unknown = msg.details;
 		if (!isTaskDetails(details)) continue;
+		// New result details are projections of native checkpoints, not another
+		// write. Their arrival order must not roll back a newer mutation.
+		// Legacy results without this marker retain their original replay order.
+		if (Object.hasOwn(details, "stateSource")) continue;
 		tasks = details.tasks.map((t) => ({ ...t }));
 		nextId = details.nextId;
 	}
@@ -655,11 +668,33 @@ export function registerTodoTool(pi: ExtensionAPI): void {
 				params.action,
 				params as TaskMutationParams,
 			);
+			const mutation = !result.details.error && ["create", "update", "delete", "clear"].includes(params.action);
+			let checkpoint: { version: number; tasks: Task[]; nextId: number } | undefined;
+			if (mutation) {
+				try {
+					if (typeof pi.appendEntry !== "function") throw new Error();
+					// Detach the native entry from caller metadata and returned mutable details.
+					checkpoint = JSON.parse(JSON.stringify({ version: 1, tasks: result.state.tasks, nextId: result.state.nextId }));
+				} catch {
+					const error = "Todo mutation not applied: native snapshot persistence is unavailable or state is not serializable.";
+					return { content: [{ type: "text" as const, text: error }], details: { action: result.details.action, params: {}, tasks, nextId, stateSource: "native-entry-v1" as const, error }, isError: true };
+				}
+			}
 			tasks = result.state.tasks;
 			nextId = result.state.nextId;
+			if (checkpoint) {
+				try {
+					pi.appendEntry(TODO_STATE_ENTRY, checkpoint);
+				} catch {
+					// An append may have partially succeeded. Keep the actual in-memory
+					// mutation/IDs, never roll it back or advise blindly repeating it.
+					const error = "Todo state changed in this session, but persistence is unconfirmed. Inspect todo list before retrying; do not blindly repeat the mutation.";
+					return { content: [{ type: "text" as const, text: error }], details: { ...result.details, stateSource: "native-entry-v1" as const, error }, isError: true };
+				}
+			}
 			return {
 				content: result.content,
-				details: result.details,
+				details: { ...result.details, stateSource: "native-entry-v1" as const },
 				...(result.details.error ? { isError: true } : {}),
 			};
 		},

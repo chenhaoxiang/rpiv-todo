@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {loadSource,theme} from './helpers/source-vm.mjs';
-async function toolHarness(){const a=await loadSource(new URL('../todo.ts',import.meta.url));let tool;a.registerTodoTool({registerTool:t=>tool=t});return{a,tool};}
+async function toolHarness(){const a=await loadSource(new URL('../todo.ts',import.meta.url));let tool;a.registerTodoTool({registerTool:t=>tool=t,appendEntry(){}});return{a,tool};}
 test('rejected transition carries error flag and never displays its requested state',async()=>{
  const h=await toolHarness();await h.tool.execute('create',{action:'create',subject:'A'},undefined,undefined,{});
  await h.tool.execute('done',{action:'update',id:1,status:'completed'},undefined,undefined,{});
