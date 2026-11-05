@@ -19,7 +19,7 @@ test('ready command is read-only after replay, empty result and invalid arg', as
 });
 test('tree and compaction restore next ID and lifecycle handlers use current branch', async () => {
   const a=await loadSource(new URL('../index.ts',import.meta.url));const hooks=new Map();let tool;
-  a.default({registerTool:t=>tool=t,registerCommand(){},on:(n,f)=>hooks.set(n,f)});
+  a.default({registerTool:t=>tool=t,registerCommand(){},appendEntry(){},on:(n,f)=>hooks.set(n,f)});
   const ctx={hasUI:false,sessionManager:{getBranch:()=>[{type:'message',message:{role:'toolResult',toolName:'todo',details:{tasks:[{id:10,subject:'restored',status:'pending'}],nextId:11}}}]}};
   for(const event of ['session_start','session_compact','session_tree']) {
     await hooks.get(event)({},ctx);const r=await tool.execute('id',{action:'create',subject:'new'},undefined,undefined,ctx);assert.equal(r.details.tasks.at(-1).id,11);
@@ -27,7 +27,7 @@ test('tree and compaction restore next ID and lifecycle handlers use current bra
 });
 test('overflow prioritizes a current task late in insertion order', async () => {
   const a=await loadSource(new URL('../index.ts',import.meta.url));const hooks=new Map();let tool,widget;
-  a.default({registerTool:t=>tool=t,registerCommand(){},on:(n,f)=>hooks.set(n,f)});
+  a.default({registerTool:t=>tool=t,registerCommand(){},appendEntry(){},on:(n,f)=>hooks.set(n,f)});
   const ctx={hasUI:true,sessionManager:{getBranch:()=>[]},ui:{setWidget:(_k,f)=>{if(f)widget=f({requestRender(){}},theme)}}};
   await hooks.get('session_start')({},ctx);for(let i=0;i<20;i++)await tool.execute('id',{action:'create',subject:'pending'+i},undefined,undefined,ctx);
   await tool.execute('id',{action:'update',id:20,status:'in_progress',subject:'CURRENT'},undefined,undefined,ctx);await hooks.get('tool_execution_end')({toolName:'todo'},ctx);

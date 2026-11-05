@@ -42,7 +42,7 @@ test('baseline replay uses current branch latest snapshot only and reload is rep
 test('baseline overlay reads live state, drops completed first, rebinds and disposes', async () => {
   // Load index once so reducer and overlay share the same module instance.
   const mod=await loadSource(new URL('../index.ts',import.meta.url));let tool;const hooks=new Map();const widgets=[];let widget,renders=0;
-  mod.default({registerTool:t=>tool=t,registerCommand(){},on:(n,f)=>hooks.set(n,f)});
+  mod.default({registerTool:t=>tool=t,registerCommand(){},appendEntry(){},on:(n,f)=>hooks.set(n,f)});
   const ui={setWidget:(key,factory)=>{widgets.push({key,factory});if(factory)widget=factory({requestRender:()=>renders++},theme)}};
   const c={...ctx([]),hasUI:true,ui};await hooks.get('session_start')({},c);
   for(let i=0;i<15;i++) await tool.execute('id',{action:'create',subject:'任务🙂 '+i},undefined,undefined,c);

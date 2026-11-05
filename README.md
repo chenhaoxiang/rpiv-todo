@@ -10,7 +10,7 @@ This repository is the maintained fork:
 
 ## Releases and branch policy
 
-The maintained release is **0.1.2-fork.3**, based on community **0.1.2**. Fork releases use `<community-version>-fork.<revision>`; the fork revision increases without pretending to be a new upstream release.
+The source candidate is **0.1.2-fork.4**, based on community **0.1.2**, adding native branch snapshots for composed calls. The published **0.1.2-fork.3** remains retained with the rollback limitation below. Fork releases use `<community-version>-fork.<revision>`; the fork revision increases without pretending to be a new upstream release.
 
 - `main`: our maintained integration and release branch, including fork fixes.
 - `upstream-main`: an exact mirror of the community's `main`, with no fork commits. Never install from this branch.
@@ -19,7 +19,7 @@ The maintained release is **0.1.2-fork.3**, based on community **0.1.2**. Fork r
 Install a reproducible release:
 
 ```bash
-pi install git:github.com/chenhaoxiang/rpiv-todo@v0.1.2-fork.3
+pi install git:github.com/chenhaoxiang/rpiv-todo@v0.1.2-fork.4
 ```
 
 [GitHub Releases](https://github.com/chenhaoxiang/rpiv-todo/releases) include the installable package tarball, a provenance manifest, and `SHA256SUMS`. These GitHub releases are not npm publications under the upstream author's namespace. See [release maintenance](docs/releasing.md) for asset installation and future releases.
@@ -92,7 +92,13 @@ Optional fields include `description`, `activeForm`, `owner`, and arbitrary `met
 
 ## Persistence and overlay behavior
 
-Todo state is persisted through the tool result details recorded in Pi's session branch. On `session_start`, compaction, and tree changes, the extension reconstructs the latest snapshot from the current branch. Existing session history therefore survives `/reload`, compaction, and branch navigation.
+Successful create/update/delete/clear operations append one detached `rpiv-todo-state` custom entry through Pi's native `appendEntry()` API, with `{version:1, tasks, nextId}`. There is no new task database, transcript rewrite or model-context injection. List/get and reducer-rejected mutations append no entry. On `session_start`, compaction and tree changes, replay uses only the current branch, including old direct `todo` result snapshots.
+
+New tool-result `details` preserve the existing fields and add `stateSource: "native-entry-v1"`. These results are projections, not a second replay source or a durable-write receipt: a delayed direct result must not roll back a newer native checkpoint. Codemode nested results are not standalone transcript tool results; the extension never parses outer script text or re-executes recorded nested arguments to reconstruct tasks.
+
+Missing persistence support or non-JSON state is refused before mutation. If native append throws after the in-memory mutation, the tool reports `isError: true` and unconfirmed persistence, retains the actual allocated IDs/state and does not roll back or retry. A partially appended native entry remains available; volatile-only state is not promised to survive restart. Inspect the owner state before deciding what to do. See [error semantics](docs/error-results.md).
+
+Older `fork.3` readers cannot recover changes recorded only by these custom entries. Keep the prior release for rollback, but do not resume such a branch with an older reader and assume its task list is complete. This change does not recover previously lost codemode tasks or migrate existing private histories.
 
 The overlay:
 
