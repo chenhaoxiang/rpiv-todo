@@ -6,7 +6,7 @@
  * 12-line collapse-not-scroll, auto-hide when empty. No timer (todos have no
  * animation), no status bar, no aging map.
  *
- * Data source is module-level getTodos() read at render time — NEVER
+ * Data source is the foreground session's live tasks read at render time — NEVER
  * reconstructTodoState from a tool_execution_end handler, since the persisted
  * branch is stale at that point (message_end runs after the extension event).
  */
@@ -46,6 +46,12 @@ export class TodoOverlay {
 	private widgetRegistered = false;
 	private tui: TUI | undefined;
 
+	private readonly sessionId: string;
+
+	constructor(sessionId: string) {
+		this.sessionId = sessionId;
+	}
+
 	/**
 	 * Bind or rebind the UI context. Identity-compares the incoming ctx so
 	 * subsequent session_start handlers are idempotent; on identity change
@@ -66,14 +72,15 @@ export class TodoOverlay {
 	 * NEVER calls reconstructTodoState (branch is stale during tool events).
 	 */
 	update(): void {
-		if (!this.uiCtx) return;
+		const uiCtx = this.uiCtx;
+		if (!uiCtx) return;
 
-		const visible = getTodos().filter((t) => t.status !== "deleted");
+		const visible = getTodos(this.sessionId).filter((t) => t.status !== "deleted");
 
 		// Empty → unregister and clear cached refs.
 		if (visible.length === 0) {
 			if (this.widgetRegistered) {
-				this.uiCtx.setWidget(WIDGET_KEY, undefined);
+				uiCtx.setWidget(WIDGET_KEY, undefined);
 				this.widgetRegistered = false;
 				this.tui = undefined;
 			}
@@ -82,13 +89,14 @@ export class TodoOverlay {
 
 		// Non-empty → register once, then requestRender on subsequent updates.
 		if (!this.widgetRegistered) {
-			this.uiCtx.setWidget(
+			uiCtx.setWidget(
 				WIDGET_KEY,
 				(tui, theme) => {
-					this.tui = tui;
+					if (this.uiCtx === uiCtx) this.tui = tui;
 					return {
-						render: (width: number) => this.renderWidget(theme, width),
+						render: (width: number) => this.uiCtx === uiCtx ? this.renderWidget(theme, width) : [],
 						invalidate: () => {
+							if (this.uiCtx !== uiCtx) return;
 							// Theme changed — force factory re-invocation to capture fresh theme.
 							this.widgetRegistered = false;
 							this.tui = undefined;
@@ -111,7 +119,7 @@ export class TodoOverlay {
 	 * the non-completed tail if still overflowing.
 	 */
 	private renderWidget(theme: Theme, width: number): string[] {
-		const all = getTodos().filter((t) => t.status !== "deleted");
+		const all = getTodos(this.sessionId).filter((t) => t.status !== "deleted");
 		if (all.length === 0) return [];
 
 		const truncate = (line: string): string => truncateToWidth(line, width);
@@ -229,7 +237,7 @@ export class TodoOverlay {
 			line += " " + theme.fg("dim", `(${t.activeForm})`);
 		}
 		if (t.status === "pending" || t.status === "in_progress") {
-			const unresolved = unresolvedDependencies(t, getTodos());
+			const unresolved = unresolvedDependencies(t, getTodos(this.sessionId));
 			if (unresolved.length) line += " " + theme.fg("dim", `⛓ waiting #${unresolved.join(",#")}`);
 			else if (t.status === "pending") line += " " + theme.fg("dim", "[ready]");
 		}
@@ -237,11 +245,10 @@ export class TodoOverlay {
 	}
 
 	dispose(): void {
-		if (this.uiCtx) {
-			this.uiCtx.setWidget(WIDGET_KEY, undefined);
-		}
+		const uiCtx = this.uiCtx;
 		this.widgetRegistered = false;
 		this.tui = undefined;
 		this.uiCtx = undefined;
+		uiCtx?.setWidget(WIDGET_KEY, undefined);
 	}
 }

@@ -44,5 +44,26 @@ const errors=[];try{
  assert.equal(after.details.tasks.length,Number(expected));assert.equal(providerCalls,0);assert.deepEqual(errors,[]);
  const file=manager.getSessionFile();assert.ok(file); const reopened=api.SessionManager.open(file);
  assert.equal(reopened.getBranch().filter(e=>e.type==='custom'&&e.customType==='rpiv-todo-state').length,stateEntries);
- console.log(JSON.stringify({sdk:JSON.parse(await readFile(join(sdkRoot,'package.json'),'utf8')).version,actualCodemode:true,nativeNestedCalls:nested.length,before:before.details.tasks.length,afterReload:after.details.tasks.length,stateEntries,diskReopen:true,providerCalls,sdkSyntheticPromptCalls:1,syntheticStreamRounds:rounds,entry}));
+ // A second SDK session uses its own runtime/append binding and never prompts.
+ const childEvents=api.createEventBus();
+ const childLoader=new api.DefaultResourceLoader({cwd,agentDir,settingsManager,eventBus:childEvents,additionalExtensionPaths:[entry],noSkills:true,noPromptTemplates:true,noThemes:true,noContextFiles:true});
+ await childLoader.reload();assert.deepEqual(childLoader.getExtensions().errors,[]);
+ const childManager=api.SessionManager.inMemory(cwd);
+ const {session:child}=await api.createAgentSession({cwd,agentDir,resourceLoader:childLoader,sessionManager:childManager,settingsManager,modelRuntime,model:modelRuntime.getModel('fixture','fixture'),tools:['todo'],eventBus:childEvents});
+ const todo=(owner,id,args)=>owner.agent.state.tools.find(t=>t.name==='todo').execute(id,args,new AbortController().signal);
+ try {
+  assert.notEqual(childManager.getSessionId(),manager.getSessionId());
+  await child.bindExtensions({mode:'json',onError:e=>errors.push(e)});
+  assert.equal((await todo(child,'child-empty',{action:'list'})).details.tasks.length,0);
+  const created=await todo(child,'child-create',{action:'create',subject:'synthetic child task'});
+  assert.ok(!created.isError,JSON.stringify(created));assert.equal(created.details.tasks[0].id,1);
+  await child.reload();
+  const childTasks=(await todo(child,'child-list',{action:'list'})).details.tasks;
+  assert.deepEqual(childTasks.map(t=>t.subject),['synthetic child task']);
+  assert.equal(childManager.getBranch().filter(e=>e.type==='custom'&&e.customType==='rpiv-todo-state').length,1);
+  assert.deepEqual((await todo(session,'parent-list',{action:'list'})).details.tasks,after.details.tasks);
+  assert.equal(manager.getBranch().filter(e=>e.type==='custom'&&e.customType==='rpiv-todo-state').length,stateEntries);
+ } finally { child.dispose(); }
+ assert.equal(providerCalls,0);assert.deepEqual(errors,[]);
+ console.log(JSON.stringify({sdk:JSON.parse(await readFile(join(sdkRoot,'package.json'),'utf8')).version,actualCodemode:true,nativeNestedCalls:nested.length,before:before.details.tasks.length,afterReload:after.details.tasks.length,stateEntries,diskReopen:true,twoSessionsIsolated:true,providerCalls,sdkSyntheticPromptCalls:1,syntheticStreamRounds:rounds,entry}));
 }finally{session.dispose()}

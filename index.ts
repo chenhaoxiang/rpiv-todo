@@ -10,45 +10,51 @@
  * correctly after upgrade.
  */
 
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { TOOL_NAME, registerTodoTool, registerTodosCommand, reconstructTodoState } from "./todo.js";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { TOOL_NAME, evictTodoState, getTodoSessionId, registerTodoTool, registerTodosCommand, reconstructTodoState } from "./todo.js";
 import { TodoOverlay } from "./todo-overlay.js";
 
 export default function (pi: ExtensionAPI) {
-    // Todo overlay widget — constructed lazily at the first session_start with UI.
+    let foregroundSessionId: string | undefined;
     let todoOverlay: TodoOverlay | undefined;
 
-    registerTodoTool(pi);
+    registerTodoTool(pi, () => foregroundSessionId);
     registerTodosCommand(pi);
 
     pi.on("session_start", async (_event, ctx) => {
-        reconstructTodoState(ctx);
-        if (ctx.hasUI) {
-            todoOverlay ??= new TodoOverlay();
-            todoOverlay.setUICtx(ctx.ui);
-            todoOverlay.update();
-        }
+        const sessionId = reconstructTodoState(ctx);
+        if (sessionId === undefined || !ctx.hasUI) return;
+        // The first UI-bearing session owns the foreground. A child with a
+        // relayed UI must not rebind the widget or the tool's render pointer.
+        foregroundSessionId ??= sessionId;
+        if (sessionId !== foregroundSessionId) return;
+        todoOverlay ??= new TodoOverlay(sessionId);
+        todoOverlay.setUICtx(ctx.ui);
+        todoOverlay.update();
     });
 
-    pi.on("session_compact", async (_event, ctx) => {
-        reconstructTodoState(ctx);
-        todoOverlay?.update();
-    });
+    function replayAndRefresh(ctx: ExtensionContext): void {
+        const sessionId = reconstructTodoState(ctx);
+        if (sessionId !== undefined && sessionId === foregroundSessionId) todoOverlay?.update();
+    }
 
-    pi.on("session_tree", async (_event, ctx) => {
-        reconstructTodoState(ctx);
-        todoOverlay?.update();
-    });
+    pi.on("session_compact", (_event, ctx) => replayAndRefresh(ctx));
+    pi.on("session_tree", (_event, ctx) => replayAndRefresh(ctx));
 
-    pi.on("session_shutdown", async () => {
-        todoOverlay?.dispose();
+    pi.on("session_shutdown", async (_event, ctx) => {
+        const sessionId = getTodoSessionId(ctx);
+        if (sessionId === undefined) return;
+        evictTodoState(sessionId);
+        if (sessionId !== foregroundSessionId) return;
+        const overlay = todoOverlay;
+        foregroundSessionId = undefined;
         todoOverlay = undefined;
+        overlay?.dispose();
     });
 
-    // Reads getTodos() at render time; do NOT call reconstructTodoState here
-    // (branch is stale — message_end runs after tool_execution_end).
-    pi.on("tool_execution_end", async (event) => {
+    // Refresh live state, not the potentially stale branch, after a todo call.
+    pi.on("tool_execution_end", async (event, ctx) => {
         if (event.toolName !== TOOL_NAME || event.isError) return;
-        todoOverlay?.update();
+        if (foregroundSessionId !== undefined && getTodoSessionId(ctx) === foregroundSessionId) todoOverlay?.update();
     });
 }

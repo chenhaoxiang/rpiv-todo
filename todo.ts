@@ -11,7 +11,7 @@
  * templates/pi-permissions.jsonc:26.
  */
 
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { StringEnum } from "@earendil-works/pi-ai";
 import { Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
@@ -25,6 +25,7 @@ export const TODO_STATE_ENTRY = "rpiv-todo-state";
 const TOOL_LABEL = "Todo";
 const COMMAND_NAME = "todos";
 
+const ERR_UNKNOWN_SESSION = "Todo unavailable: session ID could not be determined.";
 const ERR_REQUIRES_INTERACTIVE = "/todos requires interactive mode";
 const MSG_NO_TODOS = "No todos yet. Ask the agent to add some!";
 
@@ -69,14 +70,47 @@ const VALID_TRANSITIONS: Record<TaskStatus, ReadonlySet<TaskStatus>> = {
 };
 
 // ---------------------------------------------------------------------------
-// Module state
+// Module state — partitioned by Pi session identity
 // ---------------------------------------------------------------------------
 
-let tasks: Task[] = [];
-let nextId = 1;
+const sessionStates = new Map<string, ReducerState>();
 
-export function getTodos(): readonly Task[] {
-	return tasks;
+type SessionContext = Pick<ExtensionContext, "sessionManager">;
+
+function getSessionManager(ctx?: SessionContext): SessionContext["sessionManager"] | undefined {
+	try {
+		return ctx?.sessionManager;
+	} catch (error) {
+		// Pi invalidates old contexts on session replacement and reload.
+		if (/stale after session replacement/.test(String(error))) return undefined;
+		throw error;
+	}
+}
+
+function getSessionId(manager?: SessionContext["sessionManager"]): string | undefined {
+	if (typeof manager?.getSessionId !== "function") return undefined;
+	const id = manager.getSessionId();
+	return typeof id === "string" && id.trim() ? id : undefined;
+}
+
+export function getTodoSessionId(ctx?: SessionContext): string | undefined {
+	return getSessionId(getSessionManager(ctx));
+}
+
+function emptyState(): ReducerState {
+	return { tasks: [], nextId: 1 };
+}
+
+function getState(sessionId: string | undefined): ReducerState {
+	return (sessionId !== undefined ? sessionStates.get(sessionId) : undefined) ?? emptyState();
+}
+
+export function getTodos(sessionId: string | undefined): readonly Task[] {
+	return getState(sessionId).tasks;
+}
+
+export function evictTodoState(sessionId: string): void {
+	sessionStates.delete(sessionId);
 }
 
 // ---------------------------------------------------------------------------
@@ -509,36 +543,72 @@ export function applyTaskMutation(
 }
 
 // ---------------------------------------------------------------------------
-// Persistence — snapshot-based replay with type-guard
+// Persistence — defensive snapshot replay
 // ---------------------------------------------------------------------------
 
-function isTaskDetails(value: unknown): value is TaskDetails {
-	if (!value || typeof value !== "object") return false;
-	const v = value as Record<string, unknown>;
-	return Array.isArray(v.tasks) && typeof v.nextId === "number";
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
-export function reconstructTodoState(ctx: any): void {
-	tasks = [];
-	nextId = 1;
-	for (const entry of ctx.sessionManager.getBranch()) {
-		if (entry.type === "custom" && entry.customType === TODO_STATE_ENTRY && entry.data?.version === 1 && isTaskDetails(entry.data)) {
-			tasks = JSON.parse(JSON.stringify(entry.data.tasks));
-			nextId = entry.data.nextId;
+function isTaskId(value: unknown): value is number {
+	return typeof value === "number" && Number.isSafeInteger(value) && value > 0;
+}
+
+function isOptionalString(value: unknown): boolean {
+	return value === undefined || typeof value === "string";
+}
+
+function isTask(value: unknown): value is Task {
+	return isRecord(value) && isTaskId(value.id) && typeof value.subject === "string" &&
+		typeof value.status === "string" && Object.hasOwn(VALID_TRANSITIONS, value.status) &&
+		isOptionalString(value.description) && isOptionalString(value.activeForm) && isOptionalString(value.owner) &&
+		(value.blockedBy === undefined || (Array.isArray(value.blockedBy) && [...value.blockedBy].every(isTaskId))) &&
+		(value.metadata === undefined || isRecord(value.metadata));
+}
+
+function isTaskSnapshot(value: unknown): value is ReducerState {
+	if (!isRecord(value) || !Array.isArray(value.tasks) || !isTaskId(value.nextId)) return false;
+	const ids = new Set<number>();
+	for (const task of value.tasks) {
+		if (!isTask(task) || task.id >= value.nextId || ids.has(task.id)) return false;
+		ids.add(task.id);
+	}
+	return true;
+}
+
+function decodeSnapshot(value: unknown): ReducerState | undefined {
+	try {
+		if (!isTaskSnapshot(value)) return undefined;
+		const snapshot: unknown = JSON.parse(JSON.stringify({ tasks: value.tasks, nextId: value.nextId }));
+		// A malformed in-memory entry may fail to serialize or change shape.
+		return isTaskSnapshot(snapshot) ? snapshot : undefined;
+	} catch {
+		return undefined;
+	}
+}
+
+export function reconstructTodoState(ctx: SessionContext): string | undefined {
+	const manager = getSessionManager(ctx);
+	const sessionId = getSessionId(manager);
+	if (!manager || sessionId === undefined) return;
+	let state = emptyState();
+	for (const entry of manager.getBranch()) {
+		if (entry?.type === "custom" && entry.customType === TODO_STATE_ENTRY) {
+			const data: unknown = entry.data;
+			if (isRecord(data) && data.version === 1) state = decodeSnapshot(data) ?? state;
 			continue;
 		}
-		if (entry.type !== "message") continue;
+		if (entry?.type !== "message") continue;
 		const msg = entry.message;
-		if (msg.role !== "toolResult" || msg.toolName !== "todo") continue;
+		if (msg?.role !== "toolResult" || msg.toolName !== TOOL_NAME) continue;
 		const details: unknown = msg.details;
-		if (!isTaskDetails(details)) continue;
-		// New result details are projections of native checkpoints, not another
-		// write. Their arrival order must not roll back a newer mutation.
-		// Legacy results without this marker retain their original replay order.
-		if (Object.hasOwn(details, "stateSource")) continue;
-		tasks = details.tasks.map((t) => ({ ...t }));
-		nextId = details.nextId;
+		// New results are projections of checkpoints and cannot roll back a
+		// newer mutation. Unmarked legacy results keep their replay order.
+		if (!isRecord(details) || Object.hasOwn(details, "stateSource")) continue;
+		state = decodeSnapshot(details) ?? state;
 	}
+	sessionStates.set(sessionId, state);
+	return sessionId;
 }
 
 // ---------------------------------------------------------------------------
@@ -578,10 +648,6 @@ const ACTION_GLYPH: Record<TaskAction, string> = {
 	list: "☰",
 	clear: "∅",
 };
-
-function taskSubject(id: number): string | undefined {
-	return tasks.find((t) => t.id === id)?.subject;
-}
 
 // ---------------------------------------------------------------------------
 // Tool registration
@@ -643,7 +709,7 @@ const TodoParams = Type.Object({
 	),
 });
 
-export function registerTodoTool(pi: ExtensionAPI): void {
+export function registerTodoTool(pi: ExtensionAPI, getForegroundSessionId?: () => string | undefined): void {
 	pi.registerTool({
 		name: TOOL_NAME,
 		label: TOOL_LABEL,
@@ -662,27 +728,35 @@ export function registerTodoTool(pi: ExtensionAPI): void {
 		],
 		parameters: TodoParams,
 
-		async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
+		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+			const action = params.action as TaskAction;
+			const sessionId = getTodoSessionId(ctx);
+			const current = getState(sessionId);
+			if (sessionId === undefined) {
+				const result = errorResult(current, action, {}, ERR_UNKNOWN_SESSION);
+				return { content: result.content, details: { ...result.details, stateSource: "native-entry-v1" as const }, isError: true };
+			}
 			const result = applyTaskMutation(
-				{ tasks, nextId },
-				params.action,
+				current,
+				action,
 				params as TaskMutationParams,
 			);
-			const mutation = !result.details.error && ["create", "update", "delete", "clear"].includes(params.action);
+			const mutation = !result.details.error && ["create", "update", "delete", "clear"].includes(action);
 			let checkpoint: { version: number; tasks: Task[]; nextId: number } | undefined;
 			if (mutation) {
 				try {
 					if (typeof pi.appendEntry !== "function") throw new Error();
 					// Detach the native entry from caller metadata and returned mutable details.
-					checkpoint = JSON.parse(JSON.stringify({ version: 1, tasks: result.state.tasks, nextId: result.state.nextId }));
+					const snapshot: unknown = JSON.parse(JSON.stringify(result.state));
+					if (!isTaskSnapshot(snapshot)) throw new Error();
+					checkpoint = { version: 1, ...snapshot };
 				} catch {
 					const error = "Todo mutation not applied: native snapshot persistence is unavailable or state is not serializable.";
-					return { content: [{ type: "text" as const, text: error }], details: { action: result.details.action, params: {}, tasks, nextId, stateSource: "native-entry-v1" as const, error }, isError: true };
+					return { content: [{ type: "text" as const, text: error }], details: { action: result.details.action, params: {}, tasks: current.tasks, nextId: current.nextId, stateSource: "native-entry-v1" as const, error }, isError: true };
 				}
 			}
-			tasks = result.state.tasks;
-			nextId = result.state.nextId;
 			if (checkpoint) {
+				sessionStates.set(sessionId, result.state);
 				try {
 					pi.appendEntry(TODO_STATE_ENTRY, checkpoint);
 				} catch {
@@ -700,20 +774,23 @@ export function registerTodoTool(pi: ExtensionAPI): void {
 		},
 
 		renderCall(args, theme, _context) {
-			const glyph = ACTION_GLYPH[args.action] ?? args.action;
+			const action = args.action as TaskAction;
+			const glyph = ACTION_GLYPH[action] ?? action;
 			let text = theme.fg("toolTitle", theme.bold("todo ")) + theme.fg("muted", glyph);
 
-			if (args.action === "create" && args.subject) {
+			if (action === "create" && args.subject) {
 				text += ` ${theme.fg("dim", args.subject)}`;
 			} else if (
-				(args.action === "update" || args.action === "get" || args.action === "delete") &&
+				(action === "update" || action === "get" || action === "delete") &&
 				args.id !== undefined
 			) {
-				const subject = taskSubject(args.id);
+				// Pi's render context has no session id. Only look in this
+				// registration's foreground slot, never search sibling sessions.
+				const subject = getTodos(getForegroundSessionId?.()).find((t) => t.id === args.id)?.subject;
 				text += ` ${theme.fg("accent", subject ?? `#${args.id}`)}`;
-			} else if (args.action === "list" && args.status) {
-				text += ` ${theme.fg("muted", formatStatus(args.status))}`;
-			} else if (args.action === "clear") {
+			} else if (action === "list" && args.status) {
+				text += ` ${theme.fg("muted", formatStatus(args.status as TaskStatus))}`;
+			} else if (action === "clear") {
 				// nothing extra
 			}
 			return new Text(text, 0, 0);
@@ -776,6 +853,12 @@ export function registerTodosCommand(pi: ExtensionAPI): void {
 				ctx.ui.notify("Usage: /todos [ready]", "warning");
 				return;
 			}
+			const sessionId = getTodoSessionId(ctx);
+			if (sessionId === undefined) {
+				ctx.ui.notify(ERR_UNKNOWN_SESSION, "error");
+				return;
+			}
+			const tasks = getTodos(sessionId);
 			if (action === "ready") {
 				const ready = readyTasks(tasks);
 				ctx.ui.notify(ready.length ? `Ready to start (not auto-scheduled):\n${ready.map(t => `#${t.id} ${t.subject}`).join("\n")}` : "No pending tasks are ready to start.", "info");
