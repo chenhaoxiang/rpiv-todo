@@ -22,7 +22,7 @@ Applies only to chenhaoxiang/rpiv-todo. The community project remains [juiceshar
 
 ## Retained community baseline
 
-The current source candidate is **0.1.2-fork.4**, adding owner-native branch snapshots for composed calls while preserving the task-readiness behavior in [the feature guide](task-readiness.md) and reducer/error rendering in [error results](error-results.md). Published fork.3 remains retained; it cannot reconstruct changes recorded only by the new custom entries, so rollback is not a task-history migration. The previous release facts below describe the retained community base, not the new feature's installed acceptance.
+The current source candidate is **0.1.2-fork.5**, based on community **0.1.2**. It retains owner-native branch snapshots for composed calls and adds session-isolated state, defensive replay validation, and configurable overlay controls while preserving the task-readiness behavior in [the feature guide](task-readiness.md) and reducer/error rendering in [error results](error-results.md). This is source-only: no `v0.1.2-fork.5` tag, GitHub Release, package asset, `release-manifest.json`, or checksum exists. Published **0.1.2-fork.4** remains the stable rollback target; it does not contain the candidate changes. Rollback is a version fallback, not a task-history migration, so keep private session history boundaries explicit.
 
 Version **0.1.2-fork.1** uses the real standalone community base 0.1.2. Earlier local fork metadata said 0.1.4 without a qualifier; this normalization does not revert the host-provided Pi/typebox imports, public todo identity, branch replay, dependency reducer or overlay. Current community main is an ancestor; source behavior remains unchanged.
 
@@ -45,7 +45,7 @@ Keep the previous release/source available for rollback. Do not modify real sess
 
 ## 中文摘要
 
-`main` 是保留我们修复的维护主线，`upstream-main` 只镜像社区主分支。版本使用社区基线加 `-fork.N`，每次通过测试的版本都发布固定 tag、GitHub Release、可安装包、来源清单和 SHA-256 校验文件。社区镜像领先不代表该新功能已进入本次发布；不能用纯社区树覆盖我们的修复。安装后需重启或 reload，已有会话不会自动切换。
+`main` 是保留我们修复的维护主线，`upstream-main` 只镜像社区主分支。版本使用社区基线加 `-fork.N`；已验证并正式发布的版本才创建固定 tag、GitHub Release、可安装包、来源清单和 SHA-256 校验文件。当前 `0.1.2-fork.5` 仍是源码候选，不创建这些发布制品；已发布的 `fork.4` 仍可作为稳定回退。社区镜像领先不代表该新功能已进入本次发布；不能用纯社区树覆盖我们的修复。安装后需重启或 reload，已有会话不会自动切换。
 
 ## Manifest consumer contract
 

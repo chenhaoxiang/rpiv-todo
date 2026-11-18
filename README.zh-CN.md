@@ -6,13 +6,13 @@ Pi 的 Claude-Code 风格 `todo` 工具、`/todos` 命令和编辑器上方的�
 
 ## 发布版本与分支约定
 
-当前源码候选为 **0.1.2-fork.4**，基于社区 **0.1.2**，补齐组合调用的原生分支快照。已发布的 **0.1.2-fork.3** 保留，回退限制见下文。fork 版本统一使用 `<社区版本>-fork.<修订号>`，本地修订不冒充社区新版本。
+当前源码候选为 **0.1.2-fork.5**，基于社区 **0.1.2**，加入会话隔离、快照校验和可配置的 overlay 控制。它尚未发布；已发布的 **0.1.2-fork.4** 仍是稳定版本和回退目标。fork 版本统一使用 `<社区版本>-fork.<修订号>`，本地修订不冒充社区新版本。
 
 - `main`：我们的维护、整合与发布主线，保留 fork 修复。
 - `upstream-main`：仅镜像社区 `main`，不加入 fork 提交，也不作为安装来源。
 - 改动通过经过审核的 PR 合入 `main`；保留现有分支和历史。
 
-固定版本安装：
+安装已发布的稳定版本或回退到该版本：
 
 ```bash
 pi install git:github.com/chenhaoxiang/rpiv-todo@v0.1.2-fork.4
@@ -24,7 +24,7 @@ pi install git:github.com/chenhaoxiang/rpiv-todo@v0.1.2-fork.4
 
 ## 安装本 fork
 
-只有需要跟踪维护主线时才使用：
+仅在需要跟踪维护主线时使用：
 
 ```bash
 pi install git:github.com/chenhaoxiang/rpiv-todo@main
@@ -62,7 +62,7 @@ todo({ action: "update", id: 1, status: "completed" })
 
 缺少持久化入口或状态无法 JSON 序列化时，操作在修改前被拒绝。若原生追加在内存已修改后抛错，返回 `isError: true` 并明确持久化未确认，保留实际内存状态和已分配ID，不自动回滚或重试；已部分追加的记录保留，纯内存状态不保证重启后存在，先查看原owner状态再处理。详见[错误语义](docs/error-results.md)。
 
-旧 fork.3 不能恢复只存在于新 custom entry 的变更。保留旧版用于回退，但不能用旧版继续这种分支并假定任务完整；本修复不恢复此前已经丢失的 codemode 任务，也不迁移真实历史。
+已发布的 `fork.4` 支持与本候选相同的原生快照格式；`fork.3` 无法恢复只记录在这些 custom entry 中的变更。回退到 `fork.4` 会失去本候选的会话隔离、回放校验和 overlay 控制；回退不等于迁移私有会话历史，也不恢复此前已经丢失的 codemode 任务。
 
 视图在存在未删除任务时显示，展示状态、活动标签、ID 和依赖；长列表默认折叠到 12 行，空间不足时先隐藏完成项而不是活跃工作；没有可见任务时注销 widget。reload 或 UI 上下文改变后重新绑定，渲染读取实时模块状态，不使用过时 tool_execution_end 快照。
 
