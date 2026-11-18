@@ -3,7 +3,7 @@
  *
  * Mirrors @tintinweb/pi-subagents's AgentWidget shape: factory-form setWidget
  * registration in widgetContainerAbove, register-once + requestRender() refresh,
- * 12-line collapse-not-scroll, auto-hide when empty. No timer (todos have no
+ * configurable collapse-not-scroll, auto-hide when empty. No timer (todos have no
  * animation), no status bar, no aging map.
  *
  * Data source is the foreground session's live tasks read at render time — NEVER
@@ -11,18 +11,46 @@
  * branch is stale at that point (message_end runs after the extension event).
  */
 
+import { existsSync, readFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { isAbsolute, join } from "node:path";
 import type {
 	ExtensionUIContext,
 	Theme,
 } from "@earendil-works/pi-coding-agent";
-import { truncateToWidth, type TUI } from "@earendil-works/pi-tui";
+import {
+	truncateToWidth,
+	type TuiMouseEvent,
+	type TuiMouseEventResult,
+	type TUI,
+} from "@earendil-works/pi-tui";
 import { getTodos, readyTasks, unresolvedDependencies, type Task, type TaskStatus } from "./todo.js";
 
 // ---- Constants ----
 
 const WIDGET_KEY = "rpiv-todos";
-/** Maximum rendered lines before overflow-collapse kicks in. Mirrors AgentWidget. */
-const MAX_WIDGET_LINES = 12;
+const DEFAULT_MAX_WIDGET_LINES = 12;
+
+function readMaxWidgetLines(): number {
+	const home = homedir();
+	const xdg = process.env.XDG_CONFIG_HOME?.trim() ?? "";
+	const configHome = xdg === "~" ? home : xdg.startsWith("~/") ? join(home, xdg.slice(2)) : xdg;
+	const configFile = (dir: string): string => join(dir, "rpiv-todo", "config.json");
+	const xdgFile = isAbsolute(configHome) ? configFile(configHome) : undefined;
+	// Fall back to the legacy path only if the XDG file is absent, not malformed.
+	const path = xdgFile && existsSync(xdgFile) ? xdgFile : configFile(join(home, ".config"));
+	try {
+		const config: unknown = JSON.parse(readFileSync(path, "utf8"));
+		if (config !== null && typeof config === "object" && "maxWidgetLines" in config) {
+			const value = config.maxWidgetLines;
+			// Three rows fit a heading, a task, and an overflow summary.
+			if (value === 0 || (typeof value === "number" && Number.isSafeInteger(value) && value >= 3)) return value;
+		}
+	} catch {
+		// A missing or unreadable optional config must not interrupt the session.
+	}
+	return DEFAULT_MAX_WIDGET_LINES;
+}
 
 // ---- Helpers ----
 
@@ -45,6 +73,8 @@ export class TodoOverlay {
 	private uiCtx: ExtensionUIContext | undefined;
 	private widgetRegistered = false;
 	private tui: TUI | undefined;
+	private collapsed = false;
+	private maxWidgetLines = DEFAULT_MAX_WIDGET_LINES;
 
 	private readonly sessionId: string;
 
@@ -52,18 +82,11 @@ export class TodoOverlay {
 		this.sessionId = sessionId;
 	}
 
-	/**
-	 * Bind or rebind the UI context. Identity-compares the incoming ctx so
-	 * subsequent session_start handlers are idempotent; on identity change
-	 * (e.g. /reload) cached widgetRegistered/tui are invalidated so the next
-	 * update() re-registers under the fresh context.
-	 */
+	/** Called on foreground session start; config is not read during rendering. */
 	setUICtx(ctx: ExtensionUIContext): void {
-		if (ctx !== this.uiCtx) {
-			this.uiCtx = ctx;
-			this.widgetRegistered = false;
-			this.tui = undefined;
-		}
+		if (ctx !== this.uiCtx) this.unregisterWidget();
+		this.uiCtx = ctx;
+		this.maxWidgetLines = readMaxWidgetLines();
 	}
 
 	/**
@@ -75,15 +98,10 @@ export class TodoOverlay {
 		const uiCtx = this.uiCtx;
 		if (!uiCtx) return;
 
-		const visible = getTodos(this.sessionId).filter((t) => t.status !== "deleted");
-
-		// Empty → unregister and clear cached refs.
-		if (visible.length === 0) {
-			if (this.widgetRegistered) {
-				uiCtx.setWidget(WIDGET_KEY, undefined);
-				this.widgetRegistered = false;
-				this.tui = undefined;
-			}
+		// Empty or explicitly disabled → unregister and clear cached refs.
+		if (this.maxWidgetLines === 0 || !getTodos(this.sessionId).some((t) => t.status !== "deleted")) {
+			this.collapsed = false;
+			this.unregisterWidget();
 			return;
 		}
 
@@ -94,13 +112,10 @@ export class TodoOverlay {
 				(tui, theme) => {
 					if (this.uiCtx === uiCtx) this.tui = tui;
 					return {
-						render: (width: number) => this.uiCtx === uiCtx ? this.renderWidget(theme, width) : [],
-						invalidate: () => {
-							if (this.uiCtx !== uiCtx) return;
-							// Theme changed — force factory re-invocation to capture fresh theme.
-							this.widgetRegistered = false;
-							this.tui = undefined;
-						},
+						render: (width: number) => this.uiCtx === uiCtx ? this.renderWidget(uiCtx.theme ?? theme, width) : [],
+						handleMouse: (event: TuiMouseEvent) => this.uiCtx === uiCtx && this.widgetRegistered
+							? this.handleHeadingClick(event) : undefined,
+						invalidate: () => {}, // No cached rows; render reads the live UI theme.
 					};
 				},
 				{ placement: "aboveEditor" },
@@ -111,6 +126,13 @@ export class TodoOverlay {
 		}
 	}
 
+	private handleHeadingClick(event: TuiMouseEvent): TuiMouseEventResult | undefined {
+		if (event.type !== "click" || event.button !== "left" || event.y !== 0) return undefined;
+		if (event.shift || event.alt || event.ctrl) return undefined;
+		this.collapsed = !this.collapsed;
+		return { handled: true, render: true };
+	}
+
 	/**
 	 * Build rendered rows. Called from the registered widget's render() closure,
 	 * so it reads live state each time via getTodos() rather than capturing it.
@@ -119,6 +141,8 @@ export class TodoOverlay {
 	 * the non-completed tail if still overflowing.
 	 */
 	private renderWidget(theme: Theme, width: number): string[] {
+		if (this.maxWidgetLines === 0) return [];
+
 		const all = getTodos(this.sessionId).filter((t) => t.status !== "deleted");
 		if (all.length === 0) return [];
 
@@ -143,8 +167,15 @@ export class TodoOverlay {
 				theme.fg(headingColor, headingText),
 		);
 
+		if (this.collapsed) {
+			return [
+				heading,
+				truncate(theme.fg("dim", "└─ Click heading to expand")),
+			];
+		}
+
 		const lines: string[] = [heading];
-		const maxBody = MAX_WIDGET_LINES - 1; // heading takes 1 row
+		const maxBody = this.maxWidgetLines - 1; // heading takes 1 row
 
 		// Happy path: everything fits in natural order.
 		if (all.length <= maxBody) {
@@ -244,11 +275,19 @@ export class TodoOverlay {
 		return line;
 	}
 
+	private unregisterWidget(): void {
+		if (!this.widgetRegistered) return;
+		this.widgetRegistered = false;
+		this.tui = undefined;
+		this.uiCtx?.setWidget(WIDGET_KEY, undefined);
+	}
+
 	dispose(): void {
 		const uiCtx = this.uiCtx;
 		this.widgetRegistered = false;
 		this.tui = undefined;
 		this.uiCtx = undefined;
+		this.collapsed = false;
 		uiCtx?.setWidget(WIDGET_KEY, undefined);
 	}
 }

@@ -64,7 +64,9 @@ todo({ action: "update", id: 1, status: "completed" })
 
 旧 fork.3 不能恢复只存在于新 custom entry 的变更。保留旧版用于回退，但不能用旧版继续这种分支并假定任务完整；本修复不恢复此前已经丢失的 codemode 任务，也不迁移真实历史。
 
-视图在存在未删除任务时显示，展示状态、活动标签、ID 和依赖；长列表折叠到 12 行，空间不足时先隐藏完成项而不是活跃工作；没有可见任务时注销 widget。reload 或 UI 上下文改变后重新绑定，渲染读取实时模块状态，不使用过时 tool_execution_end 快照。
+视图在存在未删除任务时显示，展示状态、活动标签、ID 和依赖；长列表默认折叠到 12 行，空间不足时先隐藏完成项而不是活跃工作；没有可见任务时注销 widget。reload 或 UI 上下文改变后重新绑定，渲染读取实时模块状态，不使用过时 tool_execution_end 快照。
+
+可选配置文件为 `$XDG_CONFIG_HOME/rpiv-todo/config.json`；未设置 XDG 或该文件不存在时，读取 `~/.config/rpiv-todo/config.json`。设置 `{ "maxWidgetLines": N }` 可调整内容行数上限，`0` 关闭视图，非法值使用默认 12 行。扩展只读不写，修改后请执行 `/reload` 或重启 Pi。全屏 TUI 中，无修饰键左键点击 `Todos` 标题可折叠或展开；不注册全局原始键盘监听。
 
 ## 兼容性与限制
 

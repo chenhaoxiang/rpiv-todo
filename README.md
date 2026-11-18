@@ -104,10 +104,19 @@ The overlay:
 
 - appears above the editor when at least one non-deleted task exists;
 - displays status glyphs, active forms, IDs, and dependency links when useful;
-- collapses to 12 lines when the list is long;
+- collapses to 12 lines by default when the list is long;
 - drops completed rows before active work when space is limited;
 - unregisters itself when no visible tasks remain;
 - rebinds safely after `/reload` or a UI-context change.
+
+The optional read-only config file is `$XDG_CONFIG_HOME/rpiv-todo/config.json`, or
+`~/.config/rpiv-todo/config.json` when XDG is unset (the legacy path is used as a
+fallback when the XDG file is absent). Set `{ "maxWidgetLines": N }` to change
+the maximum content rows; `0` disables the overlay, and invalid values fall back
+to `12`. The file is never written by this extension. Configuration is read at
+session start, so restart Pi or use `/reload` after editing it. In fullscreen TUI
+mode, an unmodified left click on the `Todos` heading safely toggles a collapsed
+view; there is deliberately no global raw-key listener.
 
 The widget reads live module state while rendering. It does not reconstruct branch state from a stale `tool_execution_end` snapshot.
 
