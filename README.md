@@ -10,13 +10,13 @@ This repository is the maintained fork:
 
 ## Releases and branch policy
 
-The source candidate is **0.1.2-fork.4**, based on community **0.1.2**, adding native branch snapshots for composed calls. The published **0.1.2-fork.3** remains retained with the rollback limitation below. Fork releases use `<community-version>-fork.<revision>`; the fork revision increases without pretending to be a new upstream release.
+The current source candidate is **0.1.2-fork.5**, based on community **0.1.2**. It adds session isolation, snapshot validation, and configurable overlay controls. It has not been published; **0.1.2-fork.4** remains the published stable release and rollback target. Fork releases use `<community-version>-fork.<revision>`; the fork revision increases without pretending to be a new upstream release.
 
 - `main`: our maintained integration and release branch, including fork fixes.
 - `upstream-main`: an exact mirror of the community's `main`, with no fork commits. Never install from this branch.
 - Changes enter `main` through reviewed pull requests; existing branches and history are retained.
 
-Install a reproducible release:
+Install the published stable release or roll back to it:
 
 ```bash
 pi install git:github.com/chenhaoxiang/rpiv-todo@v0.1.2-fork.4
@@ -27,6 +27,8 @@ pi install git:github.com/chenhaoxiang/rpiv-todo@v0.1.2-fork.4
 The earlier unqualified fork version `0.1.4` is standardized as `0.1.2-fork.1` using its real community base, not by reverting host-import or overlay behavior.
 
 ## Install this fork
+
+Use `main` only to track the moving maintenance branch:
 
 ```bash
 pi install git:github.com/chenhaoxiang/rpiv-todo@main
@@ -98,16 +100,25 @@ New tool-result `details` preserve the existing fields and add `stateSource: "na
 
 Missing persistence support or non-JSON state is refused before mutation. If native append throws after the in-memory mutation, the tool reports `isError: true` and unconfirmed persistence, retains the actual allocated IDs/state and does not roll back or retry. A partially appended native entry remains available; volatile-only state is not promised to survive restart. Inspect the owner state before deciding what to do. See [error semantics](docs/error-results.md).
 
-Older `fork.3` readers cannot recover changes recorded only by these custom entries. Keep the prior release for rollback, but do not resume such a branch with an older reader and assume its task list is complete. This change does not recover previously lost codemode tasks or migrate existing private histories.
+The published `fork.4` supports this same native snapshot format; `fork.3` cannot recover changes recorded only in those custom entries. Rolling back to `fork.4` drops the candidate's session isolation, replay validation, and overlay controls. Rollback does not migrate private session histories or recover previously lost codemode tasks.
 
 The overlay:
 
 - appears above the editor when at least one non-deleted task exists;
 - displays status glyphs, active forms, IDs, and dependency links when useful;
-- collapses to 12 lines when the list is long;
+- collapses to 12 lines by default when the list is long;
 - drops completed rows before active work when space is limited;
 - unregisters itself when no visible tasks remain;
 - rebinds safely after `/reload` or a UI-context change.
+
+The optional read-only config file is `$XDG_CONFIG_HOME/rpiv-todo/config.json`, or
+`~/.config/rpiv-todo/config.json` when XDG is unset (the legacy path is used as a
+fallback when the XDG file is absent). Set `{ "maxWidgetLines": N }` to change
+the maximum content rows; `0` disables the overlay, and invalid values fall back
+to `12`. The file is never written by this extension. Configuration is read at
+session start, so restart Pi or use `/reload` after editing it. In fullscreen TUI
+mode, an unmodified left click on the `Todos` heading safely toggles a collapsed
+view; there is deliberately no global raw-key listener.
 
 The widget reads live module state while rendering. It does not reconstruct branch state from a stale `tool_execution_end` snapshot.
 
